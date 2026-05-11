@@ -1,0 +1,59 @@
+services:
+  db:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-example}
+      POSTGRES_DB: ${POSTGRES_DB:-stitchdb}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-stitchdb}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stitch-net
+
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-4000}
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:example@db:5432/stitchdb}
+      JWT_SECRET: ${JWT_SECRET:-replace-with-a-long-random-secret}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      STRIPE_CURRENCY: ${STRIPE_CURRENCY:-usd}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    ports:
+      - '4000:4000'
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - stitch-net
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+    restart: unless-stopped
+    ports:
+      - '3000:80'
+    depends_on:
+      - backend
+    networks:
+      - stitch-net
+
+volumes:
+  db-data:
+
+networks:
+  stitch-net:
+    driver: bridge
